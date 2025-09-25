@@ -1,3 +1,1 @@
-streamlit
-pandas
-numpy
+ import streamlit as st
