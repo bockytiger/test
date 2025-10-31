@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ダンゴムシ迷路A</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            max-width: 800px;
+        }
+        h1 {
+            text-align: center;
+            color: #764ba2;
+            margin-bottom: 20px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+        .settings {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+        }
+        .settings label {
+            font-weight: bold;
+            color: #333;
+        }
+        .settings input {
+            width: 60px;
+            padding: 8px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: transform 0.2s, box-shadow 0.2s;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        #mazeCanvas {
+            border: 3px solid #764ba2;
+            display: block;
+            margin: 20px auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .hidden {
+            display: none;
+        }
+        .instructions {
+            text-align: center;
+            margin-top: 15px;
+            color: #666;
+            font-size: 14px;
+        }
+        .goal-message {
+            text-align: center;
+            color: #4CAF50;
+            font-size: 24px;
+            font-weight: bold;
+            margin: 15px 0;
+            animation: pulse 1s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🐛 ダンゴムシ迷路A 🐛</h1>
+        
+        <div id="setupScreen">
+            <div class="settings">
+                <label>縦:</label>
+                <input type="number" id="height" value="15" min="5" max="50">
+                <label>横:</label>
+                <input type="number" id="width" value="15" min="5" max="50">
+            </div>
+            <div class="controls">
+                <button onclick="createMaze()">迷路作成</button>
+            </div>
+        </div>
+
+        <div id="gameScreen" class="hidden">
+            <canvas id="mazeCanvas"></canvas>
+            <div id="goalMessage" class="hidden goal-message">🎉 ゴール！おめでとう！ 🎉</div>
+            <div class="instructions">
+                矢印キーまたはWASDキーで赤い丸を移動してください
+            </div>
+            <div class="controls">
+                <button onclick="startGame()">迷路開始</button>
+                <button onclick="resetGame()">もう一度</button>
+                <button onclick="endGame()">終了</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+        const cellSize = 30;
+        let maze = [];
+        let path = [];
+        let playerX, playerY;
+        let goalX, goalY;
+        let mazeWidth, mazeHeight;
+        let gameStarted = false;
+
+        // 深さ優先探索で迷路を生成（必ず全ての通路が繋がる）
+        function generateMaze(w, h) {
+            // 全てを壁で初期化
+            const maze = Array(h).fill().map(() => Array(w).fill(1));
+            
+            // 訪問済みフラグ
+            const visited = Array(h).fill().map(() => Array(w).fill(false));
+            
+            // スタート位置を通路に
+            const startX = 1;
+            const startY = 1;
+            maze[startY][startX] = 0;
+            visited[startY][startX] = true;
+            
+            // スタックで深さ優先探索
+            const stack = [[startX, startY]];
+            
+            while (stack.length > 0) {
+                const [cx, cy] = stack[stack.length - 1];
+                
+                // 4方向をランダムな順序でチェック
+                const directions = [
+                    [0, -2], // 上
+                    [0, 2],  // 下
+                    [-2, 0], // 左
+                    [2, 0]   // 右
+                ];
+                
+                // シャッフル
+                for (let i = directions.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [directions[i], directions[j]] = [directions[j], directions[i]];
+                }
+                
+                let found = false;
+                
+                for (const [dx, dy] of directions) {
+                    const nx = cx + dx;
+                    const ny = cy + dy;
+                    
+                    // 範囲内かつ未訪問の場合
+                    if (nx > 0 && nx < w - 1 && ny > 0 && ny < h - 1 && !visited[ny][nx]) {
+                        // 間の壁を削除
+                        maze[cy + dy / 2][cx + dx / 2] = 0;
+                        maze[ny][nx] = 0;
+                        visited[ny][nx] = true;
+                        stack.push([nx, ny]);
+                        found = true;
+                        break;
+                    }
+                }
+                
+                // 行き止まりの場合は戻る
+                if (!found) {
+                    stack.pop();
+                }
+            }
+            
+            return maze;
+        }
+
+        // 経路探索（BFS）でスタートからゴールまでの最短経路を探す
+        function findPath(maze, sx, sy, gx, gy) {
+            const h = maze.length;
+            const w = maze[0].length;
+            const visited = Array(h).fill().map(() => Array(w).fill(false));
+            const parent = Array(h).fill().map(() => Array(w).fill(null));
+            const queue = [[sx, sy]];
+            visited[sy][sx] = true;
+
+            while (queue.length > 0) {
+                const [x, y] = queue.shift();
+                
+                if (x === gx && y === gy) {
+                    // 経路を逆順に辿る
+                    const path = [];
+                    let cx = gx, cy = gy;
+                    while (cx !== sx || cy !== sy) {
+                        path.unshift([cx, cy]);
+                        const p = parent[cy][cx];
+                        cx = p[0];
+                        cy = p[1];
+                    }
+                    path.unshift([sx, sy]);
+                    return path;
+                }
+
+                const dirs = [[0,-1], [0,1], [-1,0], [1,0]];
+                for (const [dx, dy] of dirs) {
+                    const nx = x + dx;
+                    const ny = y + dy;
+                    
+                    if (nx >= 0 && nx < w && ny >= 0 && ny < h && 
+                        maze[ny][nx] === 0 && !visited[ny][nx]) {
+                        visited[ny][nx] = true;
+                        parent[ny][nx] = [x, y];
+                        queue.push([nx, ny]);
+                    }
+                }
+            }
+            return [];
+        }
+
+        function createMaze() {
+            mazeWidth = parseInt(document.getElementById('width').value);
+            mazeHeight = parseInt(document.getElementById('height').value);
+            
+            // 奇数に調整
+            if (mazeWidth % 2 === 0) mazeWidth++;
+            if (mazeHeight % 2 === 0) mazeHeight++;
+
+            // 迷路を生成
+            maze = generateMaze(mazeWidth, mazeHeight);
+            
+            // スタートとゴールの設定
+            playerX = 1;
+            playerY = 1;
+            goalX = mazeWidth - 2;
+            goalY = mazeHeight - 2;
+            
+            // ゴール地点を確実に通路にする
+            maze[goalY][goalX] = 0;
+            
+            // 経路を探索
+            path = findPath(maze, playerX, playerY, goalX, goalY);
+
+            // キャンバスサイズ設定
+            canvas.width = mazeWidth * cellSize;
+            canvas.height = mazeHeight * cellSize;
+
+            // 画面切り替え
+            document.getElementById('setupScreen').classList.add('hidden');
+            document.getElementById('gameScreen').classList.remove('hidden');
+            document.getElementById('goalMessage').classList.add('hidden');
+            
+            gameStarted = false;
+            drawMaze();
+        }
+
+        function drawMaze() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 迷路を描画
+            for (let y = 0; y < mazeHeight; y++) {
+                for (let x = 0; x < mazeWidth; x++) {
+                    if (maze[y][x] === 1) {
+                        ctx.fillStyle = '#333';
+                        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    } else {
+                        ctx.fillStyle = '#fff';
+                        ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    }
+                }
+            }
+
+            // 経路の目印は表示しない
+
+            // ゴール
+            ctx.fillStyle = '#4CAF50';
+            ctx.beginPath();
+            ctx.arc(goalX * cellSize + cellSize/2, goalY * cellSize + cellSize/2, cellSize/3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('G', goalX * cellSize + cellSize/2, goalY * cellSize + cellSize/2);
+
+            // スタート
+            ctx.fillStyle = '#2196F3';
+            ctx.font = 'bold 14px Arial';
+            ctx.fillText('S', playerX * cellSize + cellSize/2, playerY * cellSize + cellSize/2 - 15);
+
+            // プレイヤー（赤い丸）
+            if (gameStarted) {
+                ctx.fillStyle = '#f44336';
+                ctx.beginPath();
+                ctx.arc(playerX * cellSize + cellSize/2, playerY * cellSize + cellSize/2, cellSize/3, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function startGame() {
+            gameStarted = true;
+            playerX = 1;
+            playerY = 1;
+            document.getElementById('goalMessage').classList.add('hidden');
+            drawMaze();
+        }
+
+        function movePlayer(dx, dy) {
+            if (!gameStarted) return;
+
+            const newX = playerX + dx;
+            const newY = playerY + dy;
+
+            if (newX >= 0 && newX < mazeWidth && newY >= 0 && newY < mazeHeight && 
+                maze[newY][newX] === 0) {
+                playerX = newX;
+                playerY = newY;
+                drawMaze();
+
+                // ゴール判定
+                if (playerX === goalX && playerY === goalY) {
+                    document.getElementById('goalMessage').classList.remove('hidden');
+                    gameStarted = false;
+                }
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp':
+                case 'w':
+                case 'W':
+                    e.preventDefault();
+                    movePlayer(0, -1);
+                    break;
+                case 'ArrowDown':
+                case 's':
+                case 'S':
+                    e.preventDefault();
+                    movePlayer(0, 1);
+                    break;
+                case 'ArrowLeft':
+                case 'a':
+                case 'A':
+                    e.preventDefault();
+                    movePlayer(-1, 0);
+                    break;
+                case 'ArrowRight':
+                case 'd':
+                case 'D':
+                    e.preventDefault();
+                    movePlayer(1, 0);
+                    break;
+            }
+        });
+
+        function resetGame() {
+            document.getElementById('setupScreen').classList.remove('hidden');
+            document.getElementById('gameScreen').classList.add('hidden');
+        }
+
+        function endGame() {
+            if (confirm('ゲームを終了しますか?')) {
+                document.getElementById('setupScreen').classList.remove('hidden');
+                document.getElementById('gameScreen').classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
